@@ -1,0 +1,11 @@
+<div class="work-packages--attachments-container">
+  <div class="attributes-group--header">
+    <div class="attributes-group--header-container">
+      <h3 class="attributes-group--header-text" [textContent]="text.attachments.label"></h3>
+    </div>
+  </div>
+
+  <attachment-list [resource]="workPackage"></attachment-list>
+
+  <attachments-upload [resource]="workPackage"></attachments-upload>
+</div>

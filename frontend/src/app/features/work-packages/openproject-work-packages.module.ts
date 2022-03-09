@@ -170,8 +170,9 @@ import { FilterIntegerValueComponent } from 'core-app/features/work-packages/com
 import { WorkPackageFilterContainerComponent } from 'core-app/features/work-packages/components/filters/filter-container/filter-container.directive';
 import { FilterBooleanValueComponent } from 'core-app/features/work-packages/components/filters/filter-boolean-value/filter-boolean-value.component';
 import { WorkPackageMarkNotificationButtonComponent } from 'core-app/features/work-packages/components/wp-buttons/wp-mark-notification-button/work-package-mark-notification-button.component';
-import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
+import { WorkPackageFilesTabComponent } from 'core-app/features/work-packages/components/wp-single-view-tabs/files-tab/op-files-tab.component';
 import { WorkPackagesQueryViewService } from 'core-app/features/work-packages/components/wp-list/wp-query-view.service';
+import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
 
 @NgModule({
   imports: [
@@ -347,6 +348,9 @@ import { WorkPackagesQueryViewService } from 'core-app/features/work-packages/co
     WorkPackageRelationsAutocompleteComponent,
     WorkPackageBreadcrumbParentComponent,
 
+    // Files tab
+    WorkPackageFilesTabComponent,
+
     // Split view
     WorkPackageDetailsViewButtonComponent,
     WorkPackageSplitViewComponent,
@@ -456,9 +460,9 @@ export class OpenprojectWorkPackagesModule {
       return null;
     });
 
-    hookService.register('workPackageAttachmentUploadComponent', (workPackage:WorkPackageResource) => AttachmentsUploadComponent);
+    hookService.register('workPackageAttachmentUploadComponent', () => AttachmentsUploadComponent);
 
-    hookService.register('workPackageAttachmentListComponent', (workPackage:WorkPackageResource) => AttachmentListComponent);
+    hookService.register('workPackageAttachmentListComponent', () => AttachmentListComponent);
 
     /** Return specialized work package changeset for editing service */
     hookService.register('halResourceChangesetClass', (resource:HalResource) => {
