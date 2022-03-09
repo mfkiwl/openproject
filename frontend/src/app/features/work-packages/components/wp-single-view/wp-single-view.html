@@ -121,22 +121,3 @@
     </ng-container>
   </div>
 </div>
-
-<div class="work-packages--attachments attributes-group">
-  <div class="work-packages--attachments-container">
-    <div class="attributes-group--header">
-      <div class="attributes-group--header-container">
-        <h3 class="attributes-group--header-text" [textContent]="text.attachments.label"></h3>
-      </div>
-    </div>
-
-    <ndc-dynamic [ndcDynamicComponent]="attachmentListComponent()"
-                 [ndcDynamicInputs]="{ resource: workPackage }">
-    </ndc-dynamic>
-
-    <ndc-dynamic [ndcDynamicComponent]="attachmentUploadComponent()"
-                 [ndcDynamicInputs]="{ resource: workPackage }"
-                 *ngIf="workPackage.canAddAttachments">
-    </ndc-dynamic>
-  </div>
-</div>
