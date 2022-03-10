@@ -47,7 +47,7 @@ export class ProjectsResourceService {
       .pipe(
         tap((events) => {
           applyTransaction(() => {
-            this.store.add(events._embedded.elements);
+            this.store.upsertMany(events._embedded.elements);
             this.store.update(({ collections }) => (
               {
                 collections: {

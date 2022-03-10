@@ -103,6 +103,12 @@ export class WorkPackageTabsService {
         showCountAsBubble: true,
       },
       {
+        id: 'files',
+        component: WorkPackageFilesTabComponent,
+        name: I18n.t('js.work_packages.tabs.files'),
+        count: workPackageFilesCount,
+      },
+      {
         id: 'relations',
         component: WorkPackageRelationsTabComponent,
         name: I18n.t('js.work_packages.tabs.relations'),
@@ -114,12 +120,6 @@ export class WorkPackageTabsService {
         name: I18n.t('js.work_packages.tabs.watchers'),
         displayable: (workPackage) => !!workPackage.watchers,
         count: workPackageWatchersCount,
-      },
-      {
-        id: 'files',
-        component: WorkPackageFilesTabComponent,
-        name: I18n.t('js.work_packages.tabs.files'),
-        count: workPackageFilesCount,
       },
     ];
   }

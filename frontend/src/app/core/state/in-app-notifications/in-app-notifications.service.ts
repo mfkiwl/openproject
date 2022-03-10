@@ -58,7 +58,7 @@ export class InAppNotificationsResourceService {
       .pipe(
         tap((events) => {
           applyTransaction(() => {
-            this.store.add(events._embedded.elements);
+            this.store.upsertMany(events._embedded.elements);
             this.store.update(({ collections }) => (
               {
                 collections: {
