@@ -1,5 +1,7 @@
 import {
+  applyTransaction,
   EntityState,
+  EntityStore,
   ID,
   QueryEntity,
 } from '@datorama/akita';
@@ -12,6 +14,7 @@ import { Observable } from 'rxjs';
 import {
   filter,
 } from 'rxjs/operators';
+import { HasId } from 'core-app/core/apiv3/cache/state-cache.service';
 
 export interface CollectionResponse {
   ids:ID[];
@@ -99,4 +102,31 @@ export function selectCollectionAsEntities$<T extends CollectionItem>(service:Co
   const collection = state.collections[key];
 
   return selectEntitiesFromIDCollection(service, collection);
+}
+
+/**
+ * Insert a collection into the given entity store
+ *
+ * @param store An entity store for the collection
+ * @param collection A loaded collection
+ * @param collectionUrl The key to insert the collection at
+ */
+export function insertCollectionIntoState<T extends { id:ID }>(
+  store:EntityStore<CollectionState<T>>,
+  collection:IHALCollection<T>,
+  collectionUrl:string,
+) {
+  applyTransaction(() => {
+    store.add(collection._embedded.elements);
+    store.update(({ collections }) => (
+      {
+        collections: {
+          ...collections,
+          [collectionUrl]: {
+            ids: collection._embedded.elements.map((el) => el.id),
+          },
+        },
+      }
+    ));
+  });
 }
