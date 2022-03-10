@@ -26,7 +26,10 @@ import {
   filter,
   map,
   mergeMap,
+  shareReplay,
+  switchMap,
   take,
+  withLatestFrom,
 } from 'rxjs/operators';
 import { StateService } from '@uirouter/angular';
 import resourceTimelinePlugin from '@fullcalendar/resource-timeline';
@@ -46,13 +49,15 @@ import { CurrentProjectService } from 'core-app/core/current-project/current-pro
 import { splitViewRoute } from 'core-app/features/work-packages/routing/split-view-routes.helper';
 import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
 import { PrincipalsResourceService } from 'core-app/core/state/principals/principals.service';
-import { ApiV3ListParameters } from 'core-app/core/apiv3/paths/apiv3-list-resource.interface';
+import {
+  ApiV3ListFilter,
+  ApiV3ListParameters,
+} from 'core-app/core/apiv3/paths/apiv3-list-resource.interface';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
 import { ResourceLabelContentArg } from '@fullcalendar/resource-common';
 import { OpCalendarService } from 'core-app/features/calendar/op-calendar.service';
-import { WorkPackageCollectionResource } from 'core-app/features/hal/resources/wp-collection-resource';
 import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
 import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
@@ -65,6 +70,8 @@ import { HalError } from 'core-app/features/hal/services/hal-error';
 import { ActionsService } from 'core-app/core/state/actions/actions.service';
 import { teamPlannerEventRemoved } from 'core-app/features/team-planner/team-planner/planner/team-planner.actions';
 import { imagePath } from 'core-app/shared/helpers/images/path-helper';
+import { CapabilitiesResourceService } from 'core-app/core/state/capabilities/capabilities.service';
+import { ICapability } from 'core-app/core/state/capabilities/capability.model';
 
 @Component({
   selector: 'op-team-planner',
@@ -133,6 +140,50 @@ export class TeamPlannerComponent extends UntilDestroyedMixin implements OnInit,
       }),
     );
 
+  private assigneeCaps$ = this.wpTableFilters
+    .live$()
+    .pipe(
+      this.untilDestroyed(),
+      switchMap((queryFilters) => {
+        const filters:ApiV3ListFilter[] = [
+          ['action', '=', ['work_packages/assigned']],
+        ];
+        const assigneeFilter = queryFilters.find((queryFilter) => queryFilter._type === 'AssigneeQueryFilter');
+        if (assigneeFilter) {
+          const values = (assigneeFilter.values as HalResource[]).map((el:HalResource) => el.id as string);
+          filters.push(['principal', '=', values]);
+        }
+
+        const projectFilter = queryFilters.find((queryFilter) => queryFilter._type === 'ProjectQueryFilter');
+        if (projectFilter) {
+          const values = (projectFilter.values as HalResource[]).map((el:HalResource) => `p${el.id as string}`);
+          filters.push(['context', '=', values]);
+        } else {
+          filters.push(['context', '=', [`p${this.currentProject.id as string}`]]);
+        }
+
+        return this
+          .capabilitiesResourceService
+          .fetchCapabilities({ pageSize: -1, filters });
+      }),
+      map((result) => result
+        ._embedded
+        .elements
+        .reduce(
+          (list:{ [projectId:string]:string[] }, cap:ICapability) => {
+            const project = cap._links.context.href;
+            const principal = cap._links.principal.href;
+            const cur = list[project] || [];
+            return {
+              ...list,
+              [project]: [...cur, principal],
+            };
+          },
+          {},
+        )),
+      shareReplay(1),
+    );
+
   private params$ = this.principalIds$
     .pipe(
       this.untilDestroyed(),
@@ -182,6 +233,7 @@ export class TeamPlannerComponent extends UntilDestroyedMixin implements OnInit,
     private $state:StateService,
     private configuration:ConfigurationService,
     private principalsResourceService:PrincipalsResourceService,
+    private capabilitiesResourceService:CapabilitiesResourceService,
     private wpTableFilters:WorkPackageViewFiltersService,
     private querySpace:IsolatedQuerySpace,
     private currentProject:CurrentProjectService,
@@ -381,15 +433,19 @@ export class TeamPlannerComponent extends UntilDestroyedMixin implements OnInit,
     this
       .calendar
       .currentWorkPackages$
-      .toPromise()
-      .then((workPackages:WorkPackageCollectionResource) => {
-        const events = this.mapToCalendarEvents(workPackages.elements);
+      .pipe(
+        withLatestFrom(this.assigneeCaps$),
+        take(1),
+      )
+      .subscribe(([workPackages, projectAssignables]) => {
+        const events = this.mapToCalendarEvents(workPackages.elements, projectAssignables);
 
         this.viewLookup.destroyDetached();
 
         successCallback(events);
-      })
-      .catch(failureCallback);
+      },
+      failureCallback,
+  );
 
     void this.calendar.updateTimeframe(fetchInfo, this.projectIdentifier);
   }
@@ -505,7 +561,10 @@ export class TeamPlannerComponent extends UntilDestroyedMixin implements OnInit,
     this.actions$.dispatch(teamPlannerEventRemoved({ workPackage: workPackage.id as string }));
   }
 
-  private mapToCalendarEvents(workPackages:WorkPackageResource[]):EventInput[] {
+  private mapToCalendarEvents(
+    workPackages:WorkPackageResource[],
+    projectAssignables:{ [projectId:string]:string[] },
+  ):EventInput[] {
     return workPackages
       .map((workPackage:WorkPackageResource):EventInput|undefined => {
         if (!workPackage.assignee) {
@@ -522,7 +581,7 @@ export class TeamPlannerComponent extends UntilDestroyedMixin implements OnInit,
           editable: durationEditable || resourceEditable,
           durationEditable,
           resourceEditable,
-          constraint: this.eventConstaints(workPackage),
+          constraint: this.eventConstaints(workPackage, projectAssignables),
           title: workPackage.subject,
           start: this.wpStartDate(workPackage),
           end: this.wpEndDate(workPackage),
@@ -614,7 +673,10 @@ export class TeamPlannerComponent extends UntilDestroyedMixin implements OnInit,
   // they are forced to drag the wp to the exact same date in the others assignee row. This might be confusing.
   // Without these constraints however, users can drag the WP everywhere, thinking that they changed the date as well.
   // The WP then moves back to the original date when the calendar re-draws again. Also not optimal..
-  private eventConstaints(wp:WorkPackageResource):{ [key:string]:string|string[] } {
+  private eventConstaints(
+    wp:WorkPackageResource,
+    projectAssignables:{ [projectId:string]:string[] },
+  ):{ [key:string]:string|string[] } {
     const constraints:{ [key:string]:string|string[] } = {};
 
     if (!this.calendar.eventDurationEditable(wp)) {
@@ -624,6 +686,12 @@ export class TeamPlannerComponent extends UntilDestroyedMixin implements OnInit,
 
     if (!this.eventResourceEditable(wp)) {
       constraints.resourceIds = [this.wpAssignee(wp)];
+      return constraints;
+    }
+
+    const assignables = projectAssignables[(wp.project as HalResource).href as string];
+    if (assignables) {
+      constraints.resourceIds = [...assignables];
     }
 
     return constraints;
