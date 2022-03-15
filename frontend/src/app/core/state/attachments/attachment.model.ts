@@ -43,7 +43,7 @@ export interface IAttachmentHalResourceLinks extends IHalResourceLinks {
 
 export interface IAttachment {
   id:ID;
-  tile:string;
+  title:string;
   fileName:string;
   fileSize:number;
   description:IFormattable;

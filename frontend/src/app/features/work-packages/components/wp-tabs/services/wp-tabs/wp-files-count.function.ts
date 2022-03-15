@@ -26,15 +26,24 @@
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { Injector } from '@angular/core';
-import { Observable, of } from 'rxjs';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
+import { AttachmentsResourceService } from 'core-app/core/state/attachments/attachments.service';
 
-// TODO: use resource store for attachments
 export function workPackageFilesCount(
   workPackage:WorkPackageResource,
-  // eslint-disable-next-line
   injector:Injector,
 ):Observable<number> {
-  return of<number>(workPackage.attachments.elements.length || 0);
+  const service = injector.get(AttachmentsResourceService);
+  return service.query.select()
+    .pipe(
+      map((state) => {
+        const { id } = workPackage;
+        if (id == null) return 0;
+
+        return state.collections[id]?.ids.length || 0;
+      }),
+    );
 }

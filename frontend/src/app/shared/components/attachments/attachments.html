@@ -3,10 +3,10 @@
     {{ text.attachments }}
   </legend>
   <div id="attachments_fields">
-    <attachment-list *ngIf="resource.attachments"
+    <op-attachment-list *ngIf="resource.attachments"
                      [resource]="resource"
                      [destroyImmediately]="destroyImmediately">
-    </attachment-list>
+    </op-attachment-list>
     <attachments-upload [resource]="resource"
                         class="hide-when-print"
                         *ngIf="allowUploading">

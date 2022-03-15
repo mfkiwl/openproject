@@ -27,37 +27,49 @@
 //++
 
 import { Injectable } from '@angular/core';
-import { AttachmentsStore } from 'core-app/core/state/attachments/attacments.store';
-import { IHALCollection } from 'core-app/core/apiv3/types/hal-collection.type';
-import { IAttachment } from 'core-app/core/state/attachments/attachment.model';
 import { HttpClient } from '@angular/common/http';
-import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { ToastService } from 'core-app/shared/components/toaster/toast.service';
-import { catchError, tap } from 'rxjs/operators';
-import { applyTransaction } from '@datorama/akita';
+import { applyTransaction, QueryEntity } from '@datorama/akita';
 import { Observable } from 'rxjs';
+import { catchError, tap } from 'rxjs/operators';
+import { AttachmentsStore } from 'core-app/core/state/attachments/attacments.store';
+import { IAttachment } from 'core-app/core/state/attachments/attachment.model';
+import { IHALCollection } from 'core-app/core/apiv3/types/hal-collection.type';
+import { ToastService } from 'core-app/shared/components/toaster/toast.service';
 
 @Injectable()
 export class AttachmentsResourceService {
   protected store = new AttachmentsStore();
 
+  public query = new QueryEntity(this.store);
+
   constructor(
     private http:HttpClient,
-    private apiV3Service:ApiV3Service,
     private toastService:ToastService,
   ) { }
 
-  // TODO: change to 'storeWorkPackageAttachments', call it when work package is fetched.
-  fetchWorkPackageAttachments(workPackageId:number):Observable<IHALCollection<IAttachment>> {
+  /**
+   * Fetches attachments by the attachment collection self link.
+   * This link is used as key to store the result collection in the resource store.
+   *
+   * @param attachmentsSelfLink The self link of the attachment collection from the parent resource.
+   */
+  fetchAttachments(attachmentsSelfLink:string):Observable<IHALCollection<IAttachment>> {
     return this.http
-      .get<IHALCollection<IAttachment>>(this.attachmentsPath(workPackageId))
+      .get<IHALCollection<IAttachment>>(attachmentsSelfLink)
       .pipe(
         tap((events) => {
           applyTransaction(() => {
-            this.store.add(events._embedded.elements);
-            // this.store.update(({ collections }) => {
-            //
-            // });
+            this.store.upsertMany(events._embedded.elements);
+            this.store.update(({ collections }) => (
+              {
+                collections: {
+                  ...collections,
+                  [attachmentsSelfLink]: {
+                    ids: events._embedded.elements.map((el) => el.id),
+                  },
+                },
+              }
+            ));
           });
         }),
         catchError((error) => {
@@ -67,7 +79,33 @@ export class AttachmentsResourceService {
       );
   }
 
-  private attachmentsPath(workPackageId:number):string {
-    return `${this.apiV3Service.work_packages.path}/${workPackageId}/attachments`;
+  /**
+   * Sends deletion request and invalidates store collection of attachments.
+   *
+   * @param attachmentsSelfLink The identifier of the current attachment collection.
+   * @param attachment The attachment to be deleted.
+   */
+  removeAttachment(attachmentsSelfLink:string, attachment:IAttachment):Observable<void> {
+    return this.http
+      .delete<void>(attachment._links.delete.href, { withCredentials: true, headers: { 'content-type': 'application/json' } })
+      .pipe(
+        tap(() => {
+          applyTransaction(() => {
+            this.store.remove(attachment.id);
+            this.store.update(({ collections }) => (
+              {
+                collections: {
+                  ...collections,
+                  [attachmentsSelfLink]: undefined,
+                },
+              }
+            ));
+          });
+        }),
+        catchError((error) => {
+          this.toastService.addError(error);
+          throw error;
+        }),
+      );
   }
 }

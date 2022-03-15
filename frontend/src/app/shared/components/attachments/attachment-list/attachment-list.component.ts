@@ -27,54 +27,72 @@
 //++
 
 import {
-  ChangeDetectorRef, Component, ElementRef, Input, OnInit,
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  Input,
+  OnDestroy,
+  OnInit,
 } from '@angular/core';
-import { HalResource } from 'core-app/features/hal/resources/hal-resource';
-import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
 import { filter } from 'rxjs/operators';
 import { States } from 'core-app/core/states/states.service';
 import { trackByHref } from 'core-app/shared/helpers/angular/tracking-functions';
+import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { IAttachment } from 'core-app/core/state/attachments/attachment.model';
+import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
+import { AttachmentsResourceService } from 'core-app/core/state/attachments/attachments.service';
 
 @Component({
-  selector: 'attachment-list',
+  selector: 'op-attachment-list',
   templateUrl: './attachment-list.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AttachmentListComponent extends UntilDestroyedMixin implements OnInit {
+export class AttachmentListComponent extends UntilDestroyedMixin implements OnInit, OnDestroy {
   @Input() public resource:HalResource;
 
   @Input() public destroyImmediately = true;
 
   trackByHref = trackByHref;
 
-  attachments:HalResource[] = [];
+  attachments:IAttachment[] = [];
 
-  deletedAttachments:HalResource[] = [];
+  deletedAttachments:IAttachment[] = [];
 
   public $element:JQuery;
 
   public $formElement:JQuery;
 
+  private get attachmentsSelfLink():string {
+    const attachments = this.resource.attachments as unknown&{ href:string };
+    return attachments.href;
+  }
+
   constructor(protected elementRef:ElementRef,
     protected states:States,
     protected cdRef:ChangeDetectorRef,
+    protected attachmentsResourceService:AttachmentsResourceService,
     protected halResourceService:HalResourceService) {
     super();
   }
 
-  ngOnInit() {
-    this.$element = jQuery(this.elementRef.nativeElement);
+  ngOnInit():void {
+    this.$element = jQuery<HTMLElement>(this.elementRef.nativeElement);
 
     this.updateAttachments();
     this.setupResourceUpdateListener();
 
-    if (!this.destroyImmediately) {
-      this.setupAttachmentDeletionCallback();
-    }
+    // if (!this.destroyImmediately) {
+    //   this.setupAttachmentDeletionCallback();
+    // }
   }
 
-  public setupResourceUpdateListener() {
-    this.states.forResource(this.resource)!
+  public setupResourceUpdateListener():void {
+    const resource = this.states.forResource(this.resource);
+    if (!resource) return;
+
+    resource
       .values$()
       .pipe(
         this.untilDestroyed(),
@@ -95,7 +113,7 @@ export class AttachmentListComponent extends UntilDestroyedMixin implements OnIn
     }
   }
 
-  public removeAttachment(attachment:HalResource) {
+  public removeAttachment(attachment:IAttachment):void {
     this.deletedAttachments.push(attachment);
     // Keep the same object as we would otherwise loose the connection to the
     // resource's attachments array. That way, attachments added after removing one would not be displayed.
@@ -104,41 +122,51 @@ export class AttachmentListComponent extends UntilDestroyedMixin implements OnIn
     this.attachments.length = 0;
     this.attachments.push(...newAttachments);
 
-    this.cdRef.detectChanges();
+    this.attachmentsResourceService.removeAttachment(this.attachmentsSelfLink, attachment)
+      .subscribe(() => {
+        this.updateAttachments();
+      });
   }
 
-  private get attachmentsUpdatable() {
-    return (this.resource.attachments && this.resource.attachmentsBackend);
-  }
+  // private get attachmentsUpdatable() {
+  //   return (this.resource.attachments && this.resource.attachmentsBackend);
+  // }
 
-  public setupAttachmentDeletionCallback() {
-    this.$formElement = this.$element.closest('form');
-    this.$formElement.on('submit.attachment-component', () => {
-      this.destroyRemovedAttachments();
-    });
-  }
+  // public setupAttachmentDeletionCallback():void {
+  //   this.$formElement = this.$element.closest('form');
+  //   this.$formElement.on('submit.attachment-component', () => {
+  //     this.destroyRemovedAttachments();
+  //   });
+  // }
 
-  private destroyRemovedAttachments() {
-    this.deletedAttachments.forEach((attachment) => {
-      this
-        .resource
-        .removeAttachment(attachment);
-    });
-  }
+  // private destroyRemovedAttachments() {
+  //   this.deletedAttachments.forEach((attachment) => {
+  //     this
+  //       .resource
+  //       .removeAttachment();
+  //   });
+  // }
 
   private updateAttachments() {
-    if (!this.attachmentsUpdatable) {
-      this.attachments = this.resource.attachments.elements;
-      return;
-    }
+    // if (!this.attachmentsUpdatable) {
+    //   this.attachments = this.resource.attachments.elements;
+    //   return;
+    // }
 
-    this
-      .resource
-      .attachments
-      .updateElements()
-      .then(() => {
-        this.attachments = this.resource.attachments.elements;
+    this.attachmentsResourceService
+      .fetchAttachments(this.attachmentsSelfLink)
+      .subscribe((attachments) => {
+        this.attachments = attachments._embedded.elements;
         this.cdRef.detectChanges();
       });
+
+    // this
+    //   .resource
+    //   .attachments
+    //   .updateElements()
+    //   .then(() => {
+    //     this.attachments = this.resource.attachments.elements;
+    //     this.cdRef.detectChanges();
+    //   });
   }
 }
